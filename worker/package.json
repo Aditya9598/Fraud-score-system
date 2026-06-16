@@ -1,0 +1,10 @@
+{
+  "name": "fraud-score-worker",
+  "version": "1.0.0",
+  "description": "Node worker for fraud-score-system",
+  "type": "module",
+  "scripts": {
+    "start": "node worker.js",
+    "test": "node --test test/worker.test.js"
+  }
+}
