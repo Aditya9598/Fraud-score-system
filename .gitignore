@@ -1,0 +1,8 @@
+.env
+api/.venv/
+api/__pycache__/
+api/.pytest_cache/
+api/**/*.py[cod]
+worker/node_modules/
+scorer/target/
+*.egg-info

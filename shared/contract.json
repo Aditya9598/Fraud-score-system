@@ -1,0 +1,31 @@
+{
+  "contract_version": "1.0",
+  "description": "Shared data contract for Fraud-score-system polyglot pipeline",
+  "transaction_ingest": {
+    "contract_version": "1.0",
+    "transaction_id": "uuid",
+    "user_id": 1,
+    "amount": 500.0,
+    "type": "debit",
+    "merchant": "acme"
+  },
+  "transaction_stored": {
+    "contract_version": "1.0",
+    "transaction_id": "uuid",
+    "user_id": 1,
+    "amount": 500.0,
+    "type": "debit",
+    "merchant": "acme",
+    "status": "pending"
+  },
+  "score_result": {
+    "contract_version": "1.0",
+    "transaction_id": "uuid",
+    "risk_score": 65,
+    "risk_level": "medium",
+    "reasons": ["high_amount"]
+  },
+  "status_values": ["pending", "processing", "scored", "failed"],
+  "transaction_types": ["credit", "debit"],
+  "risk_levels": ["low", "medium", "high"]
+}
