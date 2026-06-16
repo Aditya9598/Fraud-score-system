@@ -22,6 +22,11 @@ pub struct ScoreOutput {
     pub reasons: Vec<String>,
 }
 
+pub fn score_from_json(json: &str) -> Result<ScoreOutput, String> {
+    let input: TransactionInput = serde_json::from_str(json).map_err(|e| e.to_string())?;
+    score_transaction(&input)
+}
+
 pub fn score_transaction(input: &TransactionInput) -> Result<ScoreOutput, String> {
     if input.contract_version != CONTRACT_VERSION {
         return Err(format!(
@@ -31,19 +36,19 @@ pub fn score_transaction(input: &TransactionInput) -> Result<ScoreOutput, String
     }
 
     let mut score: u32 = 0;
-    let mut reasons: Vec<String> = Vec::new();
+    let mut reasons: Vec<String> = Vec::with_capacity(3);
 
     if input.amount >= 1000.0 {
         score += 40;
-        reasons.push("high_amount".to_string());
+        reasons.push("high_amount".into());
     } else if input.amount >= 500.0 {
         score += 20;
-        reasons.push("medium_amount".to_string());
+        reasons.push("medium_amount".into());
     }
 
     if input.tx_type == "debit" && input.amount >= 300.0 {
         score += 25;
-        reasons.push("large_debit".to_string());
+        reasons.push("large_debit".into());
     }
 
     if score > 100 {
@@ -101,5 +106,17 @@ mod tests {
         let mut tx = sample_tx(100.0, "credit");
         tx.contract_version = "2.0".to_string();
         assert!(score_transaction(&tx).is_err());
+    }
+
+    #[test]
+    fn bench_score_throughput() {
+        let json = r#"{"contract_version":"1.0","transaction_id":"tx-bench","user_id":1,"amount":1000.0,"type":"debit","merchant":"acme"}"#;
+        let start = std::time::Instant::now();
+        for _ in 0..50000 {
+            let _ = score_from_json(json).unwrap();
+        }
+        let elapsed = start.elapsed();
+        println!("50000 scores in {:?} ({:.0} scores/sec)", elapsed, 50000.0 / elapsed.as_secs_f64());
+        assert!(elapsed.as_secs_f64() < 5.0);
     }
 }
