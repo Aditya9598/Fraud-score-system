@@ -1,8 +1,13 @@
+from pathlib import Path
+
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 
 from app.config import settings
 from app.models import ScoreResult, Transaction, TransactionIngest
 from app.store import store
+
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 app = FastAPI(title="Fraud Score API", version="1.0.0", debug=settings.debug)
 
@@ -40,3 +45,13 @@ def fail_transaction(transaction_id: str) -> Transaction:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "environment": settings.environment}
+
+
+if STATIC_DIR.is_dir():
+    @app.get("/ui", include_in_schema=False)
+    async def fraud_ui_root() -> FileResponse:
+        return FileResponse(STATIC_DIR / "index.html")
+
+    @app.get("/ui/", include_in_schema=False)
+    async def fraud_ui_root_slash() -> FileResponse:
+        return FileResponse(STATIC_DIR / "index.html")

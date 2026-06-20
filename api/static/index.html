@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fraud Score System</title>
+    <style>
+      :root {
+        --bg: #0d1117;
+        --panel: #161b22;
+        --border: #30363d;
+        --text: #e6edf3;
+        --muted: #8b949e;
+        --accent: #58a6ff;
+        --ok: #3fb950;
+        --warn: #d29922;
+        --bad: #f85149;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Segoe UI", system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+      }
+      header {
+        padding: 1.25rem 1.5rem;
+        border-bottom: 1px solid var(--border);
+        background: var(--panel);
+      }
+      header h1 { margin: 0; font-size: 1.35rem; }
+      header p { margin: 0.35rem 0 0; color: var(--muted); font-size: 0.9rem; }
+      main { padding: 1.25rem 1.5rem 2rem; max-width: 960px; }
+      .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 0.6rem;
+        padding: 1rem;
+      }
+      .card h2 { margin: 0 0 0.75rem; font-size: 0.95rem; }
+      .status { font-size: 1.1rem; font-weight: 600; }
+      .status.ok { color: var(--ok); }
+      .status.bad { color: var(--bad); }
+      .muted { color: var(--muted); font-size: 0.85rem; }
+      button, .btn-link {
+        border: 1px solid var(--border);
+        background: #21262d;
+        color: var(--text);
+        border-radius: 0.45rem;
+        padding: 0.5rem 0.85rem;
+        cursor: pointer;
+        font-size: 0.85rem;
+        text-decoration: none;
+        display: inline-block;
+      }
+      button:hover, .btn-link:hover { border-color: var(--accent); }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.85rem;
+      }
+      th, td {
+        text-align: left;
+        padding: 0.55rem 0.45rem;
+        border-bottom: 1px solid var(--border);
+      }
+      th { color: var(--muted); font-weight: 500; }
+      .pill {
+        display: inline-block;
+        padding: 0.15rem 0.45rem;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        background: #21262d;
+      }
+      .pill.pending { color: var(--warn); }
+      .pill.processing { color: var(--accent); }
+      .pill.scored { color: var(--ok); }
+      .pill.failed { color: var(--bad); }
+      .actions { display: flex; gap: 0.65rem; flex-wrap: wrap; margin-top: 1rem; }
+      .error { color: var(--bad); margin-top: 0.75rem; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Fraud Score System</h1>
+      <p>FastAPI ingestion → Node worker → Rust scorer pipeline</p>
+    </header>
+    <main>
+      <div class="grid">
+        <div class="card">
+          <h2>API status</h2>
+          <div id="api-status" class="status">Checking…</div>
+          <p class="muted">Port 8002 · Fraud Score API</p>
+        </div>
+        <div class="card">
+          <h2>Pending queue</h2>
+          <div id="pending-count" class="status">—</div>
+          <p class="muted">Awaiting worker + Rust scorer</p>
+        </div>
+        <div class="card">
+          <h2>Pipeline</h2>
+          <p class="muted">POST /transactions → worker polls → scorer</p>
+          <div class="actions">
+            <button type="button" id="submit-sample">Submit sample txn</button>
+            <button type="button" id="refresh">Refresh</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top: 1rem;">
+        <h2>Recent transactions</h2>
+        <div id="txn-error" class="error" hidden></div>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>User</th>
+              <th>Amount</th>
+              <th>Type</th>
+              <th>Merchant</th>
+              <th>Status</th>
+              <th>Score</th>
+            </tr>
+          </thead>
+          <tbody id="txn-body">
+            <tr><td colspan="7" class="muted">Loading…</td></tr>
+          </tbody>
+        </table>
+        <div class="actions">
+          <a class="btn-link" href="/docs" target="_blank" rel="noopener">Open Swagger API docs</a>
+        </div>
+      </div>
+    </main>
+    <script>
+      function apiBase() {
+        const path = window.location.pathname;
+        if (path.startsWith("/fraud")) return `${window.location.origin}/fraud`;
+        return window.location.origin;
+      }
+      const API = apiBase();
+
+      async function loadHealth() {
+        const el = document.getElementById("api-status");
+        try {
+          const res = await fetch(`${API}/health`);
+          const data = await res.json();
+          el.textContent = data.status === "ok" ? "Online" : data.status;
+          el.className = "status ok";
+        } catch {
+          el.textContent = "Offline";
+          el.className = "status bad";
+        }
+      }
+
+      async function loadTransactions() {
+        const body = document.getElementById("txn-body");
+        const errEl = document.getElementById("txn-error");
+        const pendingEl = document.getElementById("pending-count");
+        errEl.hidden = true;
+        try {
+          const [pendingRes, sampleId] = await Promise.all([
+            fetch(`${API}/transactions/pending`),
+            Promise.resolve(null),
+          ]);
+          const pending = await pendingRes.json();
+          pendingEl.textContent = String(pending.length);
+
+          const rows = [];
+          for (const txn of pending.slice(0, 8)) {
+            rows.push(renderRow(txn));
+          }
+
+          if (rows.length === 0) {
+            body.innerHTML = '<tr><td colspan="7" class="muted">No pending transactions — submit a sample to test the pipeline.</td></tr>';
+          } else {
+            body.innerHTML = rows.join("");
+          }
+        } catch (e) {
+          errEl.textContent = e.message || "Failed to load transactions";
+          errEl.hidden = false;
+          body.innerHTML = '<tr><td colspan="7" class="muted">—</td></tr>';
+          pendingEl.textContent = "—";
+        }
+      }
+
+      function renderRow(txn) {
+        const score = txn.score?.risk_score != null ? txn.score.risk_score : "—";
+        return `<tr>
+          <td>${txn.transaction_id}</td>
+          <td>${txn.user_id}</td>
+          <td>${txn.amount}</td>
+          <td>${txn.type}</td>
+          <td>${txn.merchant || "—"}</td>
+          <td><span class="pill ${txn.status}">${txn.status}</span></td>
+          <td>${score}</td>
+        </tr>`;
+      }
+
+      async function submitSample() {
+        const id = `tx-${Date.now()}`;
+        await fetch(`${API}/transactions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contract_version: "1.0",
+            transaction_id: id,
+            user_id: 42,
+            amount: 999.99,
+            type: "debit",
+            merchant: "sample-store",
+          }),
+        });
+        await loadTransactions();
+      }
+
+      document.getElementById("refresh").addEventListener("click", () => {
+        loadHealth();
+        loadTransactions();
+      });
+      document.getElementById("submit-sample").addEventListener("click", submitSample);
+
+      loadHealth();
+      loadTransactions();
+      setInterval(loadTransactions, 4000);
+    </script>
+  </body>
+</html>
